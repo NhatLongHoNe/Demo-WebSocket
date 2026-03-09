@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SignalR Client JavaScript</title>
+</head>
+<body>
+    <h1>SignalR Client JavaScript</h1>
+    <p id="stateLabel">Ready to connect</p>
+    <p id="connIDLabel">Connection ID: N/a</p>
+    <div>
+        <label for="connectionUrl">SignalR server URL:</label>
+        <input id="connectionUrl" >
+        <button id="connectButton" type="submit">Connect</button>
+        <button id="closeButton" disabled>Close Socket</button>
+
+    </div>
+    <p></p>
+    <div>
+        <label for="sendMessage">Message:</label>
+        <input id="sendMessage" disabled>
+        <button id="sendButton" disabled>Send</button>
+    </div>
+    <p></p>
+    <div>
+        <label for="recipents">Received Id:</label>
+        <input id="recipents" disabled>
+    </div>
+    <p></p>
+    <h2>Communication Log</h2>
+    <table style="width: 800px;">
+        <thead>
+            <tr>
+                <th style="width: 100px;">From</th>
+                <th style="width: 100px;">To</th>
+                <th>Data</th>
+            </tr>
+           
+        </thead>
+        <tbody id="commsLog"></tbody>
+    </table>
+</body>
+<script src="./lib/signalr/dist/browser/signalr.js"></script>
+<script>
+    var connectionUrl = document.getElementById("connectionUrl");
+    var connectButton = document.getElementById("connectButton");
+    var stateLabel = document.getElementById("stateLabel");
+    var sendMessage = document.getElementById("sendMessage");
+    var sendButton = document.getElementById("sendButton");
+    var commsLog = document.getElementById("commsLog");
+    var closeButton = document.getElementById("closeButton");
+    var recipents = document.getElementById("recipents");
+    var connID = document.getElementById("connIDLabel");
+    
+    connectionUrl.value = "http://localhost:5203/chatHub";
+
+    const connection = new signalR.HubConnectionBuilder().withUrl(connectionUrl.value).build();
+
+
+    connection.on("ReceiveMessage", function(from, to, message) {
+        commsLog.innerHTML += '<tr>' +
+            '<td>' + htmlEscape(from) + '</td>' +
+            '<td>' + htmlEscape(to) + '</td>' +
+            '<td>' + htmlEscape(message) + '</td>' +
+            '</tr>';
+    });
+
+    connectButton.addEventListener("click", function() {
+        stateLabel.innerHTML = "Connecting...";
+
+        connection.start().then(function() {
+            updateState();
+        }).catch(function(err) {
+            console.error(err);
+        });
+    });
+
+    closeButton.addEventListener("click", function() {
+        if(!connection || connection.state !== signalR.HubConnectionState.Connected) {
+            alert("Socket not connected");
+            return;
+        }
+        connection.stop();
+    });
+
+    sendButton.addEventListener("click", function() {
+        if(!connection || connection.state !== signalR.HubConnectionState.Connected) {
+            alert("Socket not connected");
+            return;
+        }
+        var payload = JSON.parse(constructJSON());
+        connection.invoke("SendMessage", payload.From, payload.To, payload.Message).catch(function(err) {
+            console.error(err);
+        });
+        commsLog.innerHTML += '<tr>' +
+            '<td>Client</td>' +
+            '<td>' + htmlEscape(payload.To) + '</td>' +
+            '<td>' + htmlEscape(payload.Message) + '</td>' +
+            '</tr>';
+    });
+
+    function isConnId(str) {
+        if(str.substring(0, 7) === "ConnID:") {
+            connID.innerHTML = " Connection ID: " + str.substring(8, 45);
+        }
+    }
+
+    function constructJSON(){
+        return JSON.stringify({
+            "From": connID.innerHTML.substring(8, connID.innerHTML.length),
+            "To": recipents.value,
+            "Message": sendMessage.value
+        });
+    }
+
+    function htmlEscape(str) {
+        return str.toString()
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+    function updateState() {
+        function disable(){
+            sendMessage.disabled = true;
+            sendButton.disabled = true;
+            closeButton.disabled = true;
+            recipents.disabled = true;
+        }
+        function enable(){
+            sendMessage.disabled = false;
+            sendButton.disabled = false;
+            closeButton.disabled = false;
+            recipents.disabled = false;
+        }
+        connectButton.disabled = true;
+        connectionUrl.disabled = true;
+
+        if(!connection) {
+            disable();
+        } else {
+            switch(connection.state) {
+                case "Disconnected":
+                    stateLabel.innerHTML = "Closed";
+                    connID.innerHTML = " Connection ID: N/a";
+                    disable();
+                    connectionUrl.disabled = false;
+                    connectButton.disabled = false;
+                    break;
+                case "Connecting":
+                    stateLabel.innerHTML = "Connecting...";
+                    enable();
+                    break;
+                case "Connected":
+                    stateLabel.innerHTML = "Connected";
+                    disable();
+                    break;
+                default:
+                    stateLabel.innerHTML = "unknown hub connection state: ";
+                    disable();
+                    break;
+            }
+        }
+    }
+</script>
+</html>
